@@ -90,6 +90,13 @@ resources:
          port_id: { get_resource: instance1_port1 }
          fixed_ip_address: { get_param: bigip_client_subnet_vip }
 
+   instance1_floating_ip:
+      type: OS::Neutron::FloatingIP
+      properties:
+         floating_network_id: { get_param: ext_net_id }
+         port_id: { get_resource: instance1_port1 }
+         fixed_ip_address: { get_param: bigip_client_subnet_ip }
+         
 outputs:
    instance1_private_ip:
       description: Fixed IP address of instance1 on the private network.
