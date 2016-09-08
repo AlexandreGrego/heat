@@ -53,7 +53,7 @@ resources:
       properties:
          admin_state_up: true
          name: router_1
-         external_gateway_info: { "network": { get_param: external_network_id }}
+         external_gateway_info: { "network": { get_param: ext_net_id }}
    router1_int1:
       type: OS::Neutron::RouterInterface
       properties:
@@ -96,7 +96,7 @@ resources:
          floating_network_id: { get_param: ext_net_id }
          port_id: { get_resource: instance1_port1 }
          fixed_ip_address: { get_param: bigip_client_subnet_ip }
-         
+
 outputs:
    instance1_private_ip:
       description: Fixed IP address of instance1 on the private network.
