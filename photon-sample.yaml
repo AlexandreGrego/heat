@@ -26,6 +26,12 @@ parameters:
     description: Type of instance (flavor) to be used on the compute instance.
     default: m1.small
 
+  dns:
+    type: string
+    label: DNS nameservers
+    description: Comma separated list of DNS nameservers for the private network
+    default: "8.8.8.8"
+
 resources:
   # Create the web logical switch and configure DHCP.
   container_net0:
