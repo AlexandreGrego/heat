@@ -1,7 +1,7 @@
 heat_template_version: 2013-05-23
 
 description: |
- Test Sample heat template for quick deployment of LB and two Web VMs.
+ Test Sample for the LATAM VIO Training.
 
 parameters:
   external_network_id:
