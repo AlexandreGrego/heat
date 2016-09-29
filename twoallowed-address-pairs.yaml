@@ -2,34 +2,41 @@ heat_template_version: 2013-05-23
 
 description: >
    A simple Heat template that creates a VM, hooks it up to a private network
-   and associates a floating ip from an external network to the VM.
+   and associates a floating ip from an external network to the VM. It also includes
+   allowed_address_pairs integration.
 
 parameters:
+
+  external_network_id:
+    type: string
+    label: ext-net
+    description: UUID of a Neutron external network
+    default: e8b5c267-7c37-4222-8a89-d91ebb80526c
+
   flavor_name:
     type: string
     label: flavor name
     description: Name of the flavor to be used for the instances.
     default: m1.small
+
   image_name:
     type: string
     label: image name
     description: Name of the image from which to create the instances.
-    default:  ubuntu-14.04-server-amd64
-  ext_net_id:
-    type: string
-    label: external network id
-    description: ID of the external network to which the private network should be uplinked.
-    default: e8b5c267-7c37-4222-8a89-d91ebb80526c
+    default: ubuntu-14.04-server-amd64
+
   bigip_client_subnet_ip:
     type: string
     description: Private IP address BIG-IP is assigned on client private network
     default: 10.2.2.3
+
   bigip_client_subnet_vip:
     type: string
     description: Private VIP address BIG-IP serves on client private network
     default: 10.2.2.4
 
 resources:
+   # Create Logical Network
    lnet_1:
       type: OS::Neutron::Net
       properties:
@@ -42,37 +49,46 @@ resources:
          name: subnet_1
          cidr: 10.2.2.0/24
          enable_dhcp: true
-         allocation_pools:
-            - start: 10.2.2.100
-              end: 10.2.2.101
          gateway_ip: 10.2.2.1
          network_id: { get_resource: lnet_1 }
-
+   # Create Router
    router_1:
       type: OS::Neutron::Router
       properties:
          admin_state_up: true
          name: router_1
-         external_gateway_info: { "network": { get_param: ext_net_id }}
+         external_gateway_info: { "network": { get_param: external_network_id }}
    router1_int1:
       type: OS::Neutron::RouterInterface
       properties:
          router_id: { get_resource: router_1 }
          subnet_id: { get_resource: subnet_1 }
-
+   # Create extra port for the VIP
+   vip_port:
+      type: OS::Neutron::Port
+      properties:
+         network_id: { get_resource: lnet_1  }
+         fixed_ips:
+           - ip_address: { get_param: bigip_client_subnet_vip }
+   # Create floating IP for VIP
+   vip_floating_ip:
+      type: OS::Neutron::FloatingIP
+      properties:
+        floating_network_id: { get_param: external_network_id }
+        port_id: { get_resource: vip_port }
+   # Create Instance port
    instance1_port1:
       type: OS::Neutron::Port
       properties:
          admin_state_up: true
          network_id: { get_resource: lnet_1 }
+         allowed_address_pairs:
+           - ip_address: { get_param: bigip_client_subnet_vip }
          fixed_ips:
-             - subnet: { get_resource: subnet_1 }
-               ip_address: { get_param: bigip_client_subnet_ip }
-             - subnet: { get_resource: subnet_1 }
-               ip_address: { get_param: bigip_client_subnet_vip }
+           - ip_address: { get_param: bigip_client_subnet_ip }
          security_groups:
-            - default
-
+           - default
+   # Create Instance
    instance1:
       type: OS::Nova::Server
       properties:
@@ -81,20 +97,28 @@ resources:
          flavor:  { get_param: flavor_name }
          networks:
             - port: { get_resource: instance1_port1 }
+         user_data_format: RAW
+         user_data:
+           str_replace:
+             template: |
+               #!/bin/bash
+
+               cat > /etc/sysconfig/network-scripts/ifcfg-eth0:0 <<EOF
+               DEVICE=eth0:0
+               BOOTPROTO=none
+               IPADDR=10.2.2.4
+               NETMASK=255.255.255.0
+               GATEWAY=10.2.2.1
+               ONBOOT=yes
+               EOF
+
+               ifup eth0:0
 
    instance1_floating_ip:
       type: OS::Neutron::FloatingIP
       properties:
-         floating_network_id: { get_param: ext_net_id }
-         port_id: { get_resource: instance1_port1 }
-         fixed_ip_address: { get_param: bigip_client_subnet_vip }
-
-   instance1_floating_ip:
-      type: OS::Neutron::FloatingIP
-      properties:
-         floating_network_id: { get_param: ext_net_id }
-         port_id: { get_resource: instance1_port1 }
-         fixed_ip_address: { get_param: bigip_client_subnet_ip }
+         floating_network_id: { get_param: external_network_id }
+         port_id: { get_resource: bigip_client_subnet_ip }
 
 outputs:
    instance1_private_ip:
@@ -103,4 +127,7 @@ outputs:
    instance1_floating_ip:
       description: Floating IP address of instance1 on external network.
       value: { get_attr: [ instance1_floating_ip, floating_ip_address] }
+   vip_floating_ip:
+     description: Floating IP of the VIP
+     value: { get_attr: [ vip_floating_ip, floating_ip_address] }
 
