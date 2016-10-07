@@ -430,7 +430,6 @@ resources:
 
   pool:
     type: OS::Neutron::LBaaS::Pool
-    depends_on: heat_router_int0
     properties:
       protocol: HTTP
       lb_algorithm: ROUND_ROBIN
@@ -445,6 +444,7 @@ resources:
 
   lb:
     type: OS::Neutron::LBaaS::LoadBalancer
+    depends_on: heat_router_int0
     properties:
       vip_subnet: { get_resource: web_subnet_01 }
 
