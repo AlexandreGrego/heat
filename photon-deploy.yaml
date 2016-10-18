@@ -1,0 +1,341 @@
+heat_template_version: 2013-05-23
+
+description: |
+ Deploy's 1 Photon Installer 1.0 VM, 5 Nested ESXi iamges on a tenant network.
+
+parameter_groups:
+- label: Image Flavors
+  description: Parameters for Image flavors
+  parameters:
+    - mgmt_esxi_flavor
+    - compute_esxi_flavor
+
+- label: Images
+  description: Parameters for Images
+  parameters:
+    - esxi_image
+    - photon_image
+
+- label: Network Settings
+  description: Parameters for Images
+  parameters:
+    - external_network_id
+    - dns
+
+parameters:
+  external_network_id:
+    type: string
+    label: ext-net
+    description: UUID of a Neutron external network
+    default: e8b5c267-7c37-4222-8a89-d91ebb80526c
+
+  dns:
+    type: string
+    label: DNS Server
+    description: Comma separated list of DNS servers
+    default: "10.113.61.110"
+
+  esxi_image:
+    type: string
+    description: ESXi Image
+    default: esxi-6.0-u2-4192238
+
+  photon_image:
+    type: string
+    description: Photon Installer Image
+    default: photoninstaller10
+
+  mgmt_esxi_flavor:
+    type: string
+    label: Mgmt ESXi flavor
+    description: Name of the flavor to be used for the instances.
+    default: 4vCPU-16GB_Mem
+    constraints:
+      - allowed_values:
+        - 4vCPU-16GB_Mem
+        - 4vCPU-8GB_Mem
+
+  compute_esxi_flavor:
+    type: string
+    label: Compute ESXi flavor
+    description: Name of the flavor to be used for the instances.
+    default: 4vCPU-16GB_Mem
+    constraints:
+      - allowed_values:
+        - 4vCPU-16GB_Mem
+        - 4vCPU-8GB_Mem
+
+resources:
+
+##############
+# Networking #
+##############
+
+  # Create the mgmt logical switch and configure DHCP.
+  mgmt_net_01:
+    type: OS::Neutron::Net
+    properties:
+      admin_state_up: true
+      name: mgmt-net
+      port_security_enabled: False
+
+  mgmt_subnet:
+    type: OS::Neutron::Subnet
+    properties:
+      name: mgmt-subnet
+      cidr: 192.168.110.0/24
+      dns_nameservers: [ { get_param: dns } ]
+      enable_dhcp: true
+      gateway_ip: 192.168.110.1
+      network_id: { get_resource: mgmt_net_01 }
+
+  # Create the router, add internal mgmt-net interface, and add router uplink
+  vpod_router_01:
+    type: OS::Neutron::Router
+    properties:
+      admin_state_up: true
+      name: vpod-router-01
+      value_specs: {router_type: exclusive}
+      external_gateway_info: { "network": { get_param: external_network_id }}
+
+  app_router_int0:
+    type: OS::Neutron::RouterInterface
+    properties:
+      router_id: { get_resource: vpod_router_01 }
+      subnet_id: { get_resource: mgmt_subnet }
+
+  # Create port(s) on web logical network.
+  photon-installer_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: mgmt_net_01 }
+      fixed_ips:
+          - subnet: { get_resource: mgmt_subnet }
+            ip_address: 192.168.110.3
+
+  mgmt_esxi_01_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: mgmt_net_01 }
+      fixed_ips:
+          - subnet: { get_resource: mgmt_subnet }
+            ip_address: 192.168.110.4
+
+  mgmt_esxi_01_port1:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: mgmt_net_01 }
+      fixed_ips:
+          - subnet: { get_resource: mgmt_subnet }
+            ip_address: 192.168.110.20
+
+  mgmt_esxi_02_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: mgmt_net_01 }
+      fixed_ips:
+          - subnet: { get_resource: mgmt_subnet }
+            ip_address: 192.168.110.5
+
+  mgmt_esxi_02_port1:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: mgmt_net_01 }
+      fixed_ips:
+          - subnet: { get_resource: mgmt_subnet }
+            ip_address: 192.168.110.21
+
+  mgmt_esxi_03_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: mgmt_net_01 }
+      fixed_ips:
+          - subnet: { get_resource: mgmt_subnet }
+            ip_address: 192.168.110.6
+
+  mgmt_esxi_03_port1:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: mgmt_net_01 }
+      fixed_ips:
+          - subnet: { get_resource: mgmt_subnet }
+            ip_address: 192.168.110.22
+
+  compute_esxi_01_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: mgmt_net_01 }
+      fixed_ips:
+          - subnet: { get_resource: mgmt_subnet }
+            ip_address: 192.168.110.7
+
+  compute_esxi_02_port0:
+    type: OS::Neutron::Port
+    properties:
+      admin_state_up: true
+      network_id: { get_resource: mgmt_net_01 }
+      fixed_ips:
+          - subnet: { get_resource: mgmt_subnet }
+            ip_address: 192.168.110.8
+
+  # Create floating IP's for all of the intances
+  photoninstaller10_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: {get_param: external_network_id}
+      port_id: { get_resource: photon-installer_port0 }
+
+  mgmt_esxi_01_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: {get_param: external_network_id}
+      port_id: { get_resource: mgmt_esxi_01_port0 }
+
+  mgmt_esxi_02_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: {get_param: external_network_id}
+      port_id: { get_resource: mgmt_esxi_02_port0 }
+
+  mgmt_esxi_03_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: {get_param: external_network_id}
+      port_id: { get_resource: mgmt_esxi_03_port0 }
+
+  photon_controller_01_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: {get_param: external_network_id}
+      port_id: { get_resource: mgmt_esxi_01_port1 }
+
+  photon_controller_02_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: {get_param: external_network_id}
+      port_id: { get_resource: mgmt_esxi_02_port1 }
+
+  photon_controller_03_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: {get_param: external_network_id}
+      port_id: { get_resource: mgmt_esxi_03_port1 }
+
+  compute_esxi_01_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: {get_param: external_network_id}
+      port_id: { get_resource: compute_esxi_01_port0 }
+
+  compute_esxi_02_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: {get_param: external_network_id}
+      port_id: { get_resource: compute_esxi_02_port0 }
+
+###########
+# Compute #
+###########
+
+  # Provision instances
+  photoninstaller10:
+    type: OS::Nova::Server
+    properties:
+      name: photoninstaller10
+      image: { get_param: photon_image }
+      flavor: 4vCPU-4GB_Mem
+      networks:
+        - port: { get_resource: photon-installer_port0 }
+
+  mgmt_esxi_01:
+    type: OS::Nova::Server
+    properties:
+      name: mgmt_esxi_01
+      image: { get_param: esxi_image }
+      flavor: { get_param: mgmt_esxi_flavor }
+      networks:
+        - port: { get_resource: mgmt_esxi_01_port0 }
+        - port: { get_resource: mgmt_esxi_01_port1 }
+
+  mgmt_esxi_02:
+    type: OS::Nova::Server
+    properties:
+      name: mgmt_esxi_02
+      image: { get_param: esxi_image }
+      flavor: { get_param: mgmt_esxi_flavor }
+      networks:
+        - port: { get_resource: mgmt_esxi_02_port0 }
+        - port: { get_resource: mgmt_esxi_02_port1 }
+
+  mgmt_esxi_03:
+    type: OS::Nova::Server
+    properties:
+      name: mgmt_esxi_03
+      image: { get_param: esxi_image }
+      flavor: { get_param: mgmt_esxi_flavor }
+      networks:
+        - port: { get_resource: mgmt_esxi_03_port0 }
+        - port: { get_resource: mgmt_esxi_03_port1 }
+
+  compute_esxi_01:
+    type: OS::Nova::Server
+    properties:
+      name: compute_esxi_01
+      image: { get_param: esxi_image }
+      flavor: { get_param: compute_esxi_flavor }
+      networks:
+        - port: { get_resource: compute_esxi_01_port0 }
+
+  compute_esxi_02:
+    type: OS::Nova::Server
+    properties:
+      name: compute_esxi_02
+      image: { get_param: esxi_image }
+      flavor: { get_param: compute_esxi_flavor }
+      networks:
+        - port: { get_resource: compute_esxi_02_port0 }
+
+###########
+# Outputs #
+###########
+
+outputs:
+  WebsiteURL:
+    description: Photon Installer URL
+    value:
+      str_replace:
+        template: http://host/
+        params:
+          host: { get_attr: [ photoninstaller10_floating_ip, floating_ip_address ] }
+
+  photon_installer_public_ip:
+    description: Public IP address of Photon Installer
+    value: { get_attr: [ photoninstaller10_floating_ip, floating_ip_address ] }
+
+  mgmt_esxi_01_public_ip:
+    description: Public IP address of Mgmt-ESXi-01
+    value: { get_attr: [ mgmt_esxi_01_floating_ip, floating_ip_address ] }
+
+  mgmt_esxi_02_public_ip:
+    description: Public IP address of Mgmt-ESXi-02
+    value: { get_attr: [ mgmt_esxi_02_floating_ip, floating_ip_address ] }
+
+  mgmt_esxi_03_public_ip:
+    description: Public IP address of Mgmt-ESXi-03
+    value: { get_attr: [ mgmt_esxi_03_floating_ip, floating_ip_address ] }
+
+  compute_esxi_01_public_ip:
+    description: Public IP address of Copmute-ESXi-01
+    value: { get_attr: [ compute_esxi_01_floating_ip, floating_ip_address ] }
+
+  compute_esxi_02_public_ip:
+    description: Public IP address of Copmute-ESXi-02
+    value: { get_attr: [ compute_esxi_02_floating_ip, floating_ip_address ] }
