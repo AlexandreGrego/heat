@@ -30,7 +30,7 @@ parameters:
     type: string
     label: DNS nameservers
     description: Comma separated list of DNS nameservers for the private network
-    default: "8.8.8.8"
+    default: "10.113.61.110"
 
 resources:
   # Create the web logical switch and configure DHCP.
